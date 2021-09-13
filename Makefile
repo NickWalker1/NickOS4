@@ -1,5 +1,11 @@
+C_SOURCES = $(wildcard src/kernel/*.c)
+HEADERS   = $(wildcard src/kernel/*.h)
+
+OBJ=${C_SOURCES:.c=.o}
+
 all: os.iso
 
+GCC=i386-elf-gcc
 
 run: all
 	qemu-system-i386 -cdrom os.iso
@@ -8,17 +14,17 @@ os.iso: os.bin
 	cp $< isodir/boot/os.bin
 	grub-mkrescue -o $@ isodir
 
-os.bin: boot.o kernel.o
-	i386-elf-gcc -T link.ld -o os.bin -ffreestanding -O2 -nostdlib boot.o kernel.o -lgcc
+os.bin: bin/boot.o $(OBJ) 
+	$(GCC) -T link.ld -o $@ -ffreestanding -O2 -nostdlib $^ -lgcc
 
-boot.o : 
-	nasm -felf32 boot.asm  -o boot.o
+bin/boot.o: src/boot/boot.asm
+	nasm -felf32 $< -o $@
 
-kernel.o : 
-	i386-elf-gcc kernel.c -o kernel.o -std=gnu99 -ffreestanding -O2 -Wall -Wextra
+%.o : %.c ${HEADERS} 
+	$(GCC) -c $< -o $@ -std=gnu99 -ffreestanding -O2 -nostdlib -Wall -Wextra
 
 
 clean:
 	rm -f *.iso *.bin 
-	rm -f *.o
+	rm -f src/*/*.o
 	rm -f isodir/boot/*.bin
