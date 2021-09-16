@@ -2,6 +2,17 @@
    designated as the entry point. */
 ENTRY(_start)
  
+KERNEL_VIRT_BASE = 0xC0000000;
+
+INPUT
+(
+    bin/boot.o 
+    src/kernel/kernel.o
+)
+OUTPUT
+(
+    os.bin
+)
 /* Tell where the various sections of the object files will be put in the final
    kernel image. */
 SECTIONS
@@ -23,30 +34,37 @@ SECTIONS
 		*(.multiboot.text)
 	}
 	
-	.text BLOCK(4K) : ALIGN(4K)
-	{
-		*(.text)
-	}
- 
-	/* Read-only data. */
-	.rodata BLOCK(4K) : ALIGN(4K)
-	{
-		*(.rodata)
-	}
- 
-	/* Read-write data (initialized) */
-	.data BLOCK(4K) : ALIGN(4K)
-	{
-		*(.data)
-	}
- 
-	/* Read-write data (uninitialized) and stack */
-	.bss BLOCK(4K) : ALIGN(4K)
-	{
-		*(COMMON)
-		*(.bss)
-	}
- 
-	/* The compiler may produce other sections, by default it will put them in
-	   a segment with the same name. Simply add stuff here as needed. */
+    . += KERNEL_VIRT_BASE;
+
+	
+    TEXT_SECTION_START = .;  
+	.text ALIGN(4K) : AT(ADDR(.text) - KERNEL_VIRT_BASE)
+    {
+        *(.text)
+    }
+    TEXT_SECTION_END = .;
+
+
+    RODATA_SECTION_START = .;
+	.rodata ALIGN(4K) : AT(ADDR(.rodata) - KERNEL_VIRT_BASE)
+    {
+        *(.rodata)
+    }
+    RODATA_SECTION_END = .;
+
+
+    DATA_SECTION_START = .;
+	.data ALIGN(4K) : AT(ADDR(.data) - KERNEL_VIRT_BASE)
+    {
+        *(.data)
+    }
+    DATA_SECTION_END = .;
+
+
+    BSS_SECTION_START = .;
+	.bss ALIGN(4K) : AT(ADDR(.bss) - KERNEL_VIRT_BASE)
+    {
+        *(.bss)
+    }
+    BSS_SECTION_END = .;
 }

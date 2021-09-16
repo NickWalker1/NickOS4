@@ -6,6 +6,7 @@ OBJ=${C_SOURCES:.c=.o}
 all: os.iso
 
 GCC=i386-elf-gcc
+LD =i386-elf-ld
 
 run: all
 	qemu-system-i386 -cdrom os.iso
@@ -15,7 +16,7 @@ os.iso: os.bin
 	grub-mkrescue -o $@ isodir
 
 os.bin: bin/boot.o $(OBJ) 
-	$(GCC) -T link.ld -o $@ -ffreestanding -O2 -nostdlib $^ -lgcc
+	$(LD) -T link.ld
 
 bin/boot.o: src/boot/boot.asm
 	nasm -felf32 $< -o $@
