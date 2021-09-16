@@ -6,7 +6,7 @@ MAGIC    equ  0x1BADB002        ; 'magic number' lets bootloader find the header
 CHECKSUM equ -(MAGIC + FLAGS)   ; checksum of above, to prove we are multiboot
  
 
-section .multiboot
+section .multiboot.data
 align 4
 	dd MAGIC
 	dd FLAGS
@@ -21,7 +21,7 @@ stack_top:
 
 
 
-section .text
+section .multiboot.text
 %include "src/boot/gdt.asm"
 
 ; 3 Pages beneath 1MiB mark where kernel is loaded
@@ -148,10 +148,16 @@ _start:
 
     call enable_paging
 
-	extern kernel_main
-	call kernel_main
+	call higher
+.end:
+
+
+section .text
+higher:
+
+    extern kernel_main
+    call kernel_main
 
 	cli
 .hang:	hlt
 	jmp .hang
-.end:
