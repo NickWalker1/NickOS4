@@ -1,9 +1,5 @@
-/* The bootloader will look at this image and start execution at the symbol
-   designated as the entry point. */
-ENTRY(_start)
- 
-KERNEL_VIRT_BASE = 0xC0000000;
-
+ENTRY(start)
+OUTPUT_FORMAT(elf32-i386)
 INPUT
 (
     bin/boot.o 
@@ -13,58 +9,41 @@ OUTPUT
 (
     os.bin
 )
-/* Tell where the various sections of the object files will be put in the final
-   kernel image. */
+
+
+phys = 0x100000;
+offset = 0xC0000000;
+virt = offset + phys;
+
 SECTIONS
 {
-	/* Begin putting sections at 1 MiB, a conventional place for kernels to be
-	   loaded at by the bootloader. */
-	. = 1M;
- 
-	/* First put the multiboot header, as it is required to be put very early
-	   early in the image or the bootloader won't recognize the file format.
-	   Next we'll put the .text section. */
-	.multiboot.data :
-	{
-		*(.multiboot.data)
-	}
-	
-	.multiboot.text :
-	{
-		*(.multiboot.text)
-	}
-	
-    . += KERNEL_VIRT_BASE;
+    . = virt;
 
-	
-    TEXT_SECTION_START = .;  
-	.text ALIGN(4K) : AT(ADDR(.text) - KERNEL_VIRT_BASE)
-    {
+    .text : AT(ADDR(.text) - offset) {
+        g_code = .;
         *(.text)
-    }
-    TEXT_SECTION_END = .;
-
-
-    RODATA_SECTION_START = .;
-	.rodata ALIGN(4K) : AT(ADDR(.rodata) - KERNEL_VIRT_BASE)
-    {
         *(.rodata)
+        . = ALIGN(0x1000);
     }
-    RODATA_SECTION_END = .;
 
-
-    DATA_SECTION_START = .;
-	.data ALIGN(4K) : AT(ADDR(.data) - KERNEL_VIRT_BASE)
-    {
+    .data : AT(ADDR(.data) - offset) {
+        g_data = .;
         *(.data)
+        . = ALIGN(0x1000);
     }
-    DATA_SECTION_END = .;
 
-
-    BSS_SECTION_START = .;
-	.bss ALIGN(4K) : AT(ADDR(.bss) - KERNEL_VIRT_BASE)
-    {
+    .bss : AT(ADDR(.bss) - offset) {
+        g_bss = .;
+        *(COMMON)
         *(.bss)
+        . = ALIGN(0x1000);
     }
-    BSS_SECTION_END = .;
+
+    g_end = .;
+
+    /DISCARD/ : {
+        *(.comment)
+        *(.eh_frame)
+        *(.note.gnu.build-id)
+    }
 }

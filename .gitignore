@@ -2,3 +2,4 @@ bin/
 src/*/*.o
 *.bin
 *.iso
+graveyard/

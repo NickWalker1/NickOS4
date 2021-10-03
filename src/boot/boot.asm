@@ -1,163 +1,105 @@
-; Declare constants for the multiboot header.
-MBALIGN  equ  1 << 0            ; align loaded modules on page boundaries
-MEMINFO  equ  1 << 1            ; provide memory map
-FLAGS    equ  MBALIGN | MEMINFO ; this is the Multiboot 'flag' field
-MAGIC    equ  0x1BADB002        ; 'magic number' lets bootloader find the header
-CHECKSUM equ -(MAGIC + FLAGS)   ; checksum of above, to prove we are multiboot
- 
+bits 32
 
-section .multiboot.data
-align 4
-	dd MAGIC
-	dd FLAGS
-	dd CHECKSUM
- 
+; Definitions
+KERNEL_CS equ 0x08
+KERNEL_DS equ 0x10
+USERMODE_CS equ 0x18
+USERMODE_DS equ 0x20
 
-section .bss
-align 16
-stack_bottom:
-resb 4096 ; 16 KiB
-stack_top:
+STACK_SIZE          equ 0x1000 ; 4KB stack
+THREAD_CONTEXT_SIZE equ 0x1000 ; 4KB just for thread struct
 
+MBOOT_PAGE_ALIGN    equ 0x1
+MBOOT_MEM_INFO      equ 0x2
+MBOOT_USE_GFX       equ 0x4
+MBOOT_HDR_MAGIC     equ 0x1BADB002
+MBOOT_HDR_FLAGS     equ MBOOT_PAGE_ALIGN | MBOOT_MEM_INFO
+MBOOT_CHECKSUM      equ -(MBOOT_HDR_MAGIC + MBOOT_HDR_FLAGS)
 
+; 3GB offset for translating physical to virtual addresses
+KERNEL_VIRTUAL_BASE equ 0xC0000000
+; Page directory idx of kernel's 4MB PTE
+KERNEL_PAGE_NUM     equ (KERNEL_VIRTUAL_BASE >> 22)
 
-section .multiboot.text
-%include "src/boot/gdt.asm"
-
-; 3 Pages beneath 1MiB mark where kernel is loaded
-
-PD_BASE equ 0x00FFD000
-PT_I_BASE equ 0x00FFE000
-PT_K_BASE equ 0x00FFF000
-
-PG_SIZE equ 0x1000
-
-KERNEL_BASE equ 0x00100000 ; 1MiB address
-KERNEL_VIRT_BASE equ 0xC0000000 ; 3GiB address
-
-; 1 4k page table is able to cover 4MiB of virtual addresses 
-; as 1024 entries each pointing to a different 4k page.
-
-clear_tables:
-    mov eax,0
-
-    .clear_loop
-    mov [PD_BASE+eax], byte 0
-    inc eax
-
-    cmp eax, PG_SIZE * 3
-    jl .clear_loop
-
-    ret
-
-create_page_directory:
-    ;add the identity table entry
-    mov eax, PT_I_BASE
-    or dword eax, 3
-    mov [PD_BASE], eax
-
-    ;add kernel mapping
-    mov eax, PT_K_BASE
-    or dword eax, 3
-    
-    ;get PT_K_BASE offset in ebx
-    mov ebx, KERNEL_VIRT_BASE
-    shr ebx, 22
-
-    mov [PD_BASE+ ebx*4], eax
-
-    ret
-
-create_identity_page_table:
-    ; index
-    mov eax, 0
-
-    ; phys address start
-    mov ebx, 0
-
-    .indentity_loop
-    mov ecx, ebx
-    or dword ecx, 3
-
-    ;move ecx into that memory location
-    mov [PT_I_BASE+eax*4], ecx
-
-    add ebx, 0x1000 ;point to next physical page
-    inc eax
-
-    cmp eax, 0x400 ; 1024 entries
-    jl .indentity_loop
-
-    ret
-
-create_kernel_page_table:
-    ; index
-    mov eax, 0
-
-    ; phys address
-    mov ebx, 0
-
-    .kernel_loop
-    mov ecx, ebx
-    or dword ecx, 3
-
-    mov [PT_K_BASE+eax*4], ecx
-
-    add ebx, 0x1000
-    inc eax
-
-    cmp eax, 0x400
-    jl .kernel_loop
-
-    ret
-
-enable_paging:
-    ; Set address of the directory table
-    mov eax, PD_BASE
-    mov cr3, eax
-
-    ; Enable paging
-    mov eax, cr0
-    or eax, 0x80000020
-    mov cr0, eax
-
-    jmp .branch
-    nop
-    nop
-    nop
-    nop
-    nop
-    .branch:
-
-    ret
-
-global _start:function (_start.end - _start)
-_start:
-
-	mov esp, stack_top
-	
-	lgdt [gdt_descriptor]
-
-    call clear_tables
-
-    call create_page_directory
-    
-    call create_identity_page_table
-
-    call create_kernel_page_table
-
-    call enable_paging
-
-	call higher
-.end:
+section .data
+align 0x1000
+; This PDE identity-maps the first 4MB of 32-bit physical address space
+; bit 7: PS - kernel page is 4MB
+; bit 1: RW - kernel page is R/W
+; bit 0: P  - kernel page is present
+boot_page_directory:
+    dd 0x00000083   ; First 4MB, which will be unmapped later
+    times (KERNEL_PAGE_NUM - 1) dd 0    ; Pages before kernel
+    dd 0x00000083   ; Kernel 4MB at 3GB offset
+    times (1024 - KERNEL_PAGE_NUM - 1) dd 0 ; Pages after kernel
 
 
 section .text
-higher:
+align 4
+; start of kernel image:
+; Multiboot header
+; note: you don't need Multiboot AOUT Kludge for an ELF kernel
+multiboot:
+    dd MBOOT_HDR_MAGIC
+    dd MBOOT_HDR_FLAGS
+    dd MBOOT_CHECKSUM
+    ; Mem info (only valid if aout kludge flag set or ELF kernel)
+    ;dd 0x00000000   ; header address
+    ;dd 0x00000000   ; load address
+    ;dd 0x00000000   ; load end address
+    ;dd 0x00000000   ; bss end address
+    ;dd 0x00000000   ; entry address
+    ; Graphics requests (only valid if graphics flag set)
+    ;dd 0x00000000   ; linear graphics
+    ;dd 0            ; width
+    ;dd 0            ; height
+    ;dd 32           ; set to 32
 
-    extern kernel_main
+
+extern kernel_main
+global start
+start:
+    mov ecx, (boot_page_directory - KERNEL_VIRTUAL_BASE)
+    mov cr3, ecx    ; Load page directory
+
+    mov ecx, cr4
+    or ecx, 0x00000010  ; Set PSE bit in CR4 to enable 4MB pages
+    mov cr4, ecx
+
+    mov ecx, cr0
+    or ecx, 0x80000000  ; Set PG bit in CR0 to enable paging
+    mov cr0, ecx
+
+    ; EIP currently holds physical address, so we need a long jump to
+    ; the correct virtual address to continue execution in kernel space
+    lea ecx, [start_higher_half]
+    jmp ecx     ; Absolute jump!!
+
+start_higher_half:
+    ; Unmap identity-mapped first 4MB of physical address space
+    mov dword [boot_page_directory], 0
+    invlpg [0]
+
+    mov esp, kernel_stack_top ; set up stack pointer
+    push eax    ; push header magic
+    add ebx, KERNEL_VIRTUAL_BASE    ; make multiboot header pointer virtual
+    push ebx    ; push header pointer (TODO: hopefully this isn't at an addr > 4MB)
+    cli         ; disable interrupts
+    
     call kernel_main
 
-	cli
-.hang:	hlt
-	jmp .hang
+    cli
+.hang:
+    hlt
+    jmp .hang
+
+
+section .bss
+global kernel_stack_bottom
+global kernel_stack_top
+global main_thread_addr
+main_thread_addr:
+    resb THREAD_CONTEXT_SIZE    ; reserve 4KB for main kernel thread struct
+kernel_stack_bottom:
+    resb STACK_SIZE     ; reserve 4KB for kernel stack
+kernel_stack_top:
