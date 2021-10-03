@@ -4,6 +4,11 @@ INPUT
 (
     bin/boot.o 
     src/kernel/kernel.o
+    src/drivers/low_level.o
+    src/lib/int.o
+    src/lib/memory.o
+    src/lib/screen.o
+    src/lib/smap.o
 )
 OUTPUT
 (

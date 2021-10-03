@@ -1,5 +1,5 @@
-C_SOURCES = $(wildcard src/kernel/*.c)
-HEADERS   = $(wildcard src/kernel/*.h)
+C_SOURCES = $(wildcard src/kernel/*.c src/lib/*.c src/drivers/*.c)
+HEADERS   = $(wildcard src/kernel/*.h src/lib/*.h src/drivers/*.h)
 
 OBJ=${C_SOURCES:.c=.o}
 
