@@ -13,11 +13,19 @@ align 4
 	dd CHECKSUM
  
 
+section .bss
+align 16
+stack_bottom:
+resb 4096 ; 16 KiB
+stack_top:
+
+
+
 section .multiboot.text
 %include "src/boot/gdt.asm"
 
-; 3 Pages beneath 1MiB mark where kernel is loaded, fingers crossed it's not used for anything
-KERN_STACK_TOP equ 0x00FFC000
+; 3 Pages beneath 1MiB mark where kernel is loaded
+
 PD_BASE equ 0x00FFD000
 PT_I_BASE equ 0x00FFE000
 PT_K_BASE equ 0x00FFF000
@@ -31,25 +39,18 @@ KERNEL_VIRT_BASE equ 0xC0000000 ; 3GiB address
 ; as 1024 entries each pointing to a different 4k page.
 
 clear_tables:
-    pusha 
     mov eax,0
 
-    .clear_loop:
+    .clear_loop
     mov [PD_BASE+eax], byte 0
     inc eax
 
     cmp eax, PG_SIZE * 3
     jl .clear_loop
 
-    
-    popa
-
-
-    
     ret
 
 create_page_directory:
-    pusha
     ;add the identity table entry
     mov eax, PT_I_BASE
     or dword eax, 3
@@ -65,18 +66,16 @@ create_page_directory:
 
     mov [PD_BASE+ ebx*4], eax
 
-    popa
     ret
 
 create_identity_page_table:
-    pusha
     ; index
     mov eax, 0
 
     ; phys address start
     mov ebx, 0
 
-    .indentity_loop:
+    .indentity_loop
     mov ecx, ebx
     or dword ecx, 3
 
@@ -86,19 +85,19 @@ create_identity_page_table:
     add ebx, 0x1000 ;point to next physical page
     inc eax
 
+    cmp eax, 0x400 ; 1024 entries
+    jl .indentity_loop
 
-    popa
     ret
 
 create_kernel_page_table:
-    pusha
     ; index
     mov eax, 0
 
     ; phys address
     mov ebx, 0
 
-    .kernel_loop:
+    .kernel_loop
     mov ecx, ebx
     or dword ecx, 3
 
@@ -109,11 +108,10 @@ create_kernel_page_table:
 
     cmp eax, 0x400
     jl .kernel_loop
-    popa
+
     ret
 
 enable_paging:
-    pusha 
     ; Set address of the directory table
     mov eax, PD_BASE
     mov cr3, eax
@@ -131,13 +129,12 @@ enable_paging:
     nop
     .branch:
 
-    popa
     ret
 
 global _start:function (_start.end - _start)
 _start:
-    
-	;mov esp, KERN_STACK_TOP
+
+	mov esp, stack_top
 	
 	lgdt [gdt_descriptor]
 
@@ -151,17 +148,12 @@ _start:
 
     call enable_paging
 
-
-
-	jmp higher
+	call higher
 .end:
 
 
-    cli
-.hang:
-    hlt
-    jmp .hang
-
+section .text
+higher:
 
     extern kernel_main
     call kernel_main
@@ -169,5 +161,3 @@ _start:
 	cli
 .hang:	hlt
 	jmp .hang
-
-
