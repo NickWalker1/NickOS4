@@ -152,15 +152,11 @@ _start:
     call enable_paging
 
 
-
 	jmp higher
 .end:
 
-
-    cli
-.hang:
-    hlt
-    jmp .hang
+section .text
+higher:
 
 
     extern kernel_main
